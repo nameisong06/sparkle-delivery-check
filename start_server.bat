@@ -1,7 +1,468 @@
-@echo off
-start http://localhost:8000/delivery-check-widget.html
-python -m http.server 8000
-if errorlevel 1 (
-  py -m http.server 8000
-)
-pause
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>배송가능지역 확인 - 스파클</title>
+<style>
+  :root{
+    --mist:#EAF6F8;
+    --deep:#0B5566;
+    --aqua:#1E9BB4;
+    --ink:#16262B;
+    --ink-soft:#5A7278;
+    --line:#D3E7EA;
+    --ok:#1F8A5F;
+    --ok-bg:#E6F5EE;
+    --no:#B5502E;
+    --no-bg:#FBEAE3;
+    --white:#FFFFFF;
+  }
+
+  *{ box-sizing:border-box; }
+
+  body{
+    margin:0;
+    font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",-apple-system,sans-serif;
+    background:transparent;
+    color:var(--ink);
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .widget{
+    max-width:420px;
+    width:100%;
+    margin:0 auto;
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:28px 26px 26px;
+    position:relative;
+    overflow:hidden;
+    zoom:1.3; /* 전체 30% 확대 */
+  }
+
+  .widget::before{
+    content:"";
+    position:absolute;
+    top:-60px; right:-60px;
+    width:160px; height:160px;
+    background:radial-gradient(circle at 30% 30%, var(--mist), transparent 70%);
+    border-radius:50%;
+  }
+
+  .eyebrow{
+    font-size:12px;
+    letter-spacing:.14em;
+    color:var(--aqua);
+    font-weight:700;
+    text-transform:uppercase;
+    margin:0 0 6px;
+  }
+
+  h1{
+    font-size:19px;
+    margin:0 0 4px;
+    color:var(--deep);
+    font-weight:800;
+    letter-spacing:-0.01em;
+  }
+
+  .sub{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin:0 0 20px;
+    line-height:1.5;
+  }
+
+  .btn-search-main{
+    display:block;
+    width:100%;
+    padding:18px 0;
+    background:var(--deep);
+    color:var(--white);
+    font-size:16px;
+    font-weight:800;
+    letter-spacing:-0.01em;
+    margin-bottom:16px;
+    position:relative;
+    z-index:1;
+    box-shadow:0 6px 16px rgba(11,85,102,0.18);
+  }
+  .btn-search-main:hover{ background:#093f4c; }
+
+  .addr-result{
+    margin-bottom:14px;
+  }
+
+  .addr-display{
+    border:1.5px solid var(--aqua);
+    border-radius:10px;
+    padding:12px 14px;
+    font-size:14px;
+    color:var(--ink);
+    background:#FAFDFD;
+    line-height:1.4;
+  }
+
+  .btn{
+    border:none;
+    border-radius:10px;
+    padding:0 18px;
+    font-size:13.5px;
+    font-weight:700;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:transform .12s ease, opacity .12s ease;
+  }
+
+  .btn:active{ transform:scale(0.97); }
+
+  .btn-primary{
+    background:var(--deep);
+    color:var(--white);
+  }
+  .btn-primary:hover{ background:#093f4c; }
+
+  .btn-check{
+    width:100%;
+    padding:13px;
+    background:var(--aqua);
+    color:var(--white);
+    font-size:14.5px;
+    margin-top:4px;
+  }
+  .btn-check:disabled{
+    background:#C9DEE1;
+    cursor:not-allowed;
+  }
+  .btn-check:not(:disabled):hover{ background:#177f94; }
+
+  .zip{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin:2px 0 16px;
+    min-height:16px;
+  }
+
+  .result{
+    margin-top:18px;
+    border-radius:14px;
+    padding:18px 18px 18px 16px;
+    display:none;
+    align-items:center;
+    gap:14px;
+    position:relative;
+    z-index:1;
+  }
+
+  .result.show{ display:flex; }
+
+  .result.ok{ background:var(--ok-bg); }
+  .result.no{ background:var(--no-bg); }
+
+  .drop{
+    width:38px;
+    height:38px;
+    flex-shrink:0;
+    position:relative;
+  }
+
+  .drop svg{ width:100%; height:100%; }
+
+  .result-text .title{
+    font-size:15px;
+    font-weight:800;
+    margin:0 0 2px;
+  }
+  .result.ok .title{ color:var(--ok); }
+  .result.no .title{ color:var(--no); }
+
+  .result-text .desc{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    margin:0;
+    line-height:1.5;
+  }
+
+  .demo-note{
+    margin-top:16px;
+    font-size:11px;
+    color:#B08A00;
+    background:#FFF8E1;
+    border:1px solid #F0E0A8;
+    border-radius:8px;
+    padding:8px 10px;
+    line-height:1.5;
+    display:none;
+  }
+  .demo-note.show{ display:block; }
+
+  @keyframes ripple{
+    0%{ transform:scale(0.4); opacity:.6; }
+    100%{ transform:scale(1.6); opacity:0; }
+  }
+
+  .ripple-ring{
+    position:absolute;
+    inset:0;
+    border-radius:50%;
+    border:2px solid currentColor;
+    animation:ripple .9s ease-out;
+  }
+</style>
+</head>
+<body>
+
+<div class="widget">
+  <p class="eyebrow">Sparkle Delivery Check</p>
+  <h1>배송 가능 지역 확인</h1>
+  <p class="sub">주소를 검색하면 우편번호 기준으로 배송 가능 여부를 바로 확인해드려요.</p>
+
+  <button class="btn btn-search-main" id="searchBtn">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="margin-right:8px;vertical-align:-3px;">
+      <circle cx="11" cy="11" r="7" stroke="white" stroke-width="2"/>
+      <path d="M20 20L16.5 16.5" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    주소 검색
+  </button>
+
+  <div id="addrResult" class="addr-result" style="display:none;">
+    <div id="addrDisplay" class="addr-display"></div>
+    <div class="zip" id="zipDisplay"></div>
+  </div>
+
+  <button class="btn btn-check" id="checkBtn" disabled>배송 가능 여부 확인</button>
+
+  <div class="result" id="resultBox">
+    <div class="drop" id="resultIcon"></div>
+    <div class="result-text">
+      <p class="title" id="resultTitle"></p>
+      <p class="desc" id="resultDesc"></p>
+    </div>
+  </div>
+
+  <div class="demo-note" id="demoNote">
+    ⚠ 데이터 연동에 문제가 있어서 데모(샘플) 데이터로 동작 중이에요. CONFIG의 SPREADSHEET_ID가 비어있거나 잘못됐을 수 있어요. 브라우저 개발자도구(F12) → Console 탭에서 정확한 에러 내용을 확인해주세요.
+  </div>
+</div>
+
+<!-- 카카오(다음) 우편번호 서비스 - API 키 불필요, 무료 공개 스크립트 -->
+<script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+
+<script>
+/* =========================================================
+   CONFIG — 실제 연동 시 이 부분만 수정하면 됩니다.
+   =========================================================
+   1) 구글시트에서 [파일 > 웹에 게시 > CSV] 로 게시한 링크를 아래에 붙여넣으세요.
+      시트 구조 예시 (헤더 포함, A/B열):
+        우편번호   | 배송가능여부
+        25441      | 가능
+        25442      | 불가능
+   2) 배송가능여부 칸에 들어갈 수 있는 값(가능 판정 텍스트)을 OK_VALUES에 정의합니다.
+   ========================================================= */
+const CONFIG = {
+  // 구글시트 "일반 URL"에서 가져온 진짜 스프레드시트 ID
+  SPREADSHEET_ID: "1ZRvH87cL5yjCjTiXlnfMSVO3o6DQy5K9",
+
+  // "(배송불가)"로 필터링된 작은 예외 목록 시트의 gid (전체 6만 줄이 아니라, 불가능한 우편번호만 모아둔 시트)
+  NO_ZIP_GID: "302738",
+};
+
+// 데모용 샘플 데이터 (연동 실패 시에만 사용됨) — 배송불가 우편번호만 나열
+const DEMO_NO_ZIP_LIST = ["26500"];
+
+let noDeliveryZips = new Set();   // 배송불가 우편번호만 모은 Set
+let currentZip = null;
+let currentAddr = null;
+
+// 구글 gviz API를 <script> 태그로 불러오는 방식 (JSONP) — 브라우저 CORS 정책 자체를 적용받지 않음
+function loadGvizSheet(gid, tqQuery){
+  return new Promise((resolve, reject) => {
+    if(!CONFIG.SPREADSHEET_ID){
+      reject(new Error("SPREADSHEET_ID가 설정되지 않았습니다."));
+      return;
+    }
+    const callbackName = "gvizCb_" + gid + "_" + Date.now() + "_" + Math.floor(Math.random()*100000);
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("gviz 응답 시간초과 (40초)"));
+    }, 40000);
+
+    function cleanup(){
+      clearTimeout(timer);
+      delete window[callbackName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[callbackName] = function(response){
+      try{
+        const rows = (response.table.rows || []).map(r =>
+          (r.c || []).map(cell => (cell && cell.v != null) ? String(cell.v).trim() : "")
+        );
+        cleanup();
+        resolve(rows);
+      }catch(e){
+        cleanup();
+        reject(e);
+      }
+    };
+
+    let src = `https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}/gviz/tq?gid=${gid}&headers=1&tqx=out:json;responseHandler:${callbackName}`;
+    if(tqQuery) src += `&tq=${encodeURIComponent(tqQuery)}`;
+
+    const script = document.createElement("script");
+    script.src = src;
+    script.onerror = () => { cleanup(); reject(new Error("gviz 스크립트 로드 실패")); };
+    document.body.appendChild(script);
+  });
+}
+
+async function fetchNoDeliveryZips(gid, demoFallback){
+  try{
+    const rows = await loadGvizSheet(gid);
+    const zips = new Set();
+    rows.forEach(cols => {
+      const zip = normalizeZip(cols[0]);
+      if(zip) zips.add(zip);
+    });
+    return zips;
+  }catch(e){
+    console.error("구글시트(gviz) 로드 실패, 데모 데이터로 대체합니다.", e);
+    document.getElementById('demoNote').classList.add('show');
+    return new Set(demoFallback);
+  }
+}
+
+async function loadTables(){
+  noDeliveryZips = await fetchNoDeliveryZips(CONFIG.NO_ZIP_GID, DEMO_NO_ZIP_LIST);
+  window.noDeliveryZips = noDeliveryZips; // 디버깅용: 콘솔에서 직접 확인 가능
+  console.log("배송불가 우편번호 개수:", noDeliveryZips.size);
+}
+
+// 구글시트에서 우편번호 열이 "숫자" 형식이면 앞자리 0이 사라짐 (07547 → 7547)
+// 카카오 API는 항상 5자리로 주기 때문에, 짧은 숫자열은 5자리로 0을 채워서 보정함
+function normalizeZip(zip){
+  if(zip && /^\d+$/.test(zip) && zip.length < 5) return zip.padStart(5, "0");
+  return zip;
+}
+
+// 판정 로직: "배송불가" 예외 목록에 있으면 불가능, 없으면 기본적으로 가능
+function isDeliverable(zip){
+  const normZip = normalizeZip(zip);
+  return !noDeliveryZips.has(normZip);
+}
+
+function openPostcodeSearch(){
+  if(typeof daum === 'undefined' || !daum.Postcode){
+    alert("주소 검색 서비스를 불러오지 못했어요. 인터넷 연결을 확인하시고 새로고침 후 다시 시도해주세요.");
+    return;
+  }
+  new daum.Postcode({
+    oncomplete: function(data){
+      const addr = data.roadAddress || data.jibunAddress;
+      const zip = data.zonecode;
+
+      document.getElementById('addrResult').style.display = 'block';
+      document.getElementById('addrDisplay').textContent = addr;
+      document.getElementById('zipDisplay').textContent = "우편번호 " + zip;
+
+      currentZip = zip;
+      currentAddr = addr;
+      if(tablesLoaded) document.getElementById('checkBtn').disabled = false;
+      document.getElementById('resultBox').classList.remove('show');
+    }
+  }).open();
+}
+
+function showResult(ok){
+  const box = document.getElementById('resultBox');
+  const icon = document.getElementById('resultIcon');
+  const title = document.getElementById('resultTitle');
+  const desc = document.getElementById('resultDesc');
+
+  box.classList.remove('ok','no');
+  box.classList.add(ok ? 'ok' : 'no');
+  box.classList.add('show');
+
+  const color = ok ? "var(--ok)" : "var(--no)";
+  const faceColor = ok ? "#1F8A5F" : "#B5502E";
+  const mouthPath = ok
+    ? "M9 15.5C9.8 16.7 10.9 17.3 12 17.3C13.1 17.3 14.2 16.7 15 15.5" // 웃는 입
+    : "M9 17C9.8 15.8 10.9 15.2 12 15.2C13.1 15.2 14.2 15.8 15 17";     // 우는 입 (뒤집힌 곡선)
+
+  icon.innerHTML = `
+    <div class="ripple-ring" style="color:${color}"></div>
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" fill="${faceColor}" opacity="0.9"/>
+      <circle cx="8.5" cy="10" r="1.3" fill="white"/>
+      <circle cx="15.5" cy="10" r="1.3" fill="white"/>
+      <path d="${mouthPath}" stroke="white" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+    </svg>
+  `;
+
+  if(ok){
+    title.textContent = "배송 가능한 지역이에요";
+    desc.textContent = "해당 주소로 정상 배송이 가능합니다.";
+  }else{
+    title.textContent = "배송이 불가능한 지역이에요";
+    desc.textContent = "죄송하지만 해당 주소는 현재 배송 가능 지역이 아닙니다.";
+  }
+}
+
+function showUnknown(){
+  const box = document.getElementById('resultBox');
+  const icon = document.getElementById('resultIcon');
+  const title = document.getElementById('resultTitle');
+  const desc = document.getElementById('resultDesc');
+
+  box.classList.remove('ok');
+  box.classList.add('no','show');
+  icon.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" fill="#B5502E" opacity="0.5"/>
+      <circle cx="8.5" cy="10" r="1.3" fill="white"/>
+      <circle cx="15.5" cy="10" r="1.3" fill="white"/>
+      <path d="M9 16H15" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+  `;
+  title.textContent = "확인이 필요한 지역이에요";
+  desc.textContent = "등록되지 않은 우편번호입니다. 고객센터로 문의해주세요.";
+}
+
+document.getElementById('searchBtn').addEventListener('click', openPostcodeSearch);
+
+let tablesLoaded = false;
+
+document.getElementById('checkBtn').addEventListener('click', async () => {
+  if(!tablesLoaded){
+    alert("데이터를 아직 불러오는 중이에요. 잠시 후 다시 눌러주세요.");
+    return;
+  }
+  const result = isDeliverable(currentZip);
+  if(result === null){
+    showUnknown();
+  }else{
+    showResult(result);
+  }
+});
+
+// 위젯 로드 시 미리 데이터 받아두기 (체크 버튼 클릭 시 지연 없도록)
+// 데이터가 클 경우 시간이 걸릴 수 있어 로딩 상태를 안내함
+(async () => {
+  const checkBtn = document.getElementById('checkBtn');
+  const originalLabel = checkBtn.textContent;
+  checkBtn.textContent = "배송 데이터 불러오는 중...";
+  await loadTables();
+  tablesLoaded = true;
+  checkBtn.textContent = originalLabel;
+  // 이미 주소 검색이 끝나 있었다면 바로 활성화
+  if(currentZip) checkBtn.disabled = false;
+})();
+</script>
+
+</body>
+</html>
