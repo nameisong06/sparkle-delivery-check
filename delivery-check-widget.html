@@ -414,7 +414,8 @@ function normalizeZip(zip){
 // 1단계(게이트): 화이트리스트(탭3)에 해당 동이 없으면 → 무조건 배송불가
 // 2단계: 화이트리스트에 있으면 → 배송불가 예외 목록(탭2)에 우편번호가 있는지 확인
 function isDeliverable(zip, addr){
-  if(whitelist && whitelist.length && addr){
+  const isJeju = addr && addr.startsWith("제주"); // 제주는 자체 배송권역명이라 화이트리스트 매칭이 안 되므로 게이트 생략
+  if(!isJeju && whitelist && whitelist.length && addr){
     const inWhitelist = whitelist.some(entry => addr.includes(entry));
     if(!inWhitelist) return false;
   }
