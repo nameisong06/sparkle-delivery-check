@@ -268,14 +268,38 @@ const CONFIG = {
   // 구글시트 "일반 URL"에서 가져온 진짜 스프레드시트 ID
   SPREADSHEET_ID: "1ZRvH87cL5yjCjTiXlnfMSVO3o6DQy5K9",
 
-  // "(배송불가)"로 필터링된 작은 예외 목록 시트의 gid (전체 6만 줄이 아니라, 불가능한 우편번호만 모아둔 시트)
+  // 탭2: "(배송불가)"로 필터링된 작은 예외 목록 시트의 gid (탭1의 B열에서 추출한 것)
   NO_ZIP_GID: "302738",
+
+  // 탭3: 배송가능지역 화이트리스트 (A=시도, B=시군구, C=행정동명). 이 목록에 없는 지역은 무조건 배송불가
+  WHITELIST_GID: "52179577",
 };
+
+// 카카오 API는 "서울특별시"→"서울"처럼 광역시/특별시를 축약해서 반환하므로,
+// 화이트리스트 쪽도 같은 축약형으로 맞춰줘야 주소 문자열 매칭이 정상 동작함
+const METRO_SHORT_MAP = {
+  "서울특별시": "서울",
+  "부산광역시": "부산",
+  "대구광역시": "대구",
+  "인천광역시": "인천",
+  "광주광역시": "광주",
+  "대전광역시": "대전",
+  "울산광역시": "울산",
+  "세종특별자치시": "세종",
+  "제주특별자치도": "제주",
+  "제주특별시": "제주",
+};
+function normalizeSido(sido){
+  return METRO_SHORT_MAP[sido] || sido;
+}
 
 // 데모용 샘플 데이터 (연동 실패 시에만 사용됨) — 배송불가 우편번호만 나열
 const DEMO_NO_ZIP_LIST = ["26500"];
+// 데모용 화이트리스트 (연동 실패 시에만 사용됨)
+const DEMO_WHITELIST = ["강원도 강릉시 교동", "강원도 강릉시 교2동"];
 
 let noDeliveryZips = new Set();   // 배송불가 우편번호만 모은 Set
+let whitelist = [];                // 배송가능지역 화이트리스트 (전체 주소 문자열 배열)
 let currentZip = null;
 let currentAddr = null;
 
@@ -331,16 +355,42 @@ async function fetchNoDeliveryZips(gid, demoFallback){
     });
     return zips;
   }catch(e){
-    console.error("구글시트(gviz) 로드 실패, 데모 데이터로 대체합니다.", e);
+    console.error("배송불가 목록(gviz) 로드 실패, 데모 데이터로 대체합니다.", e);
     document.getElementById('demoNote').classList.add('show');
     return new Set(demoFallback);
   }
 }
 
+// A열=시도, B열=시군구, C열=행정동명. B/C가 비어있어도 A열만 있으면 "그 시/도 전체 허용"으로 인정
+async function fetchWhitelist(gid, demoFallback){
+  try{
+    const rows = await loadGvizSheet(gid);
+    const list = [];
+    rows.forEach(cols => {
+      const sido = normalizeSido(cols[0] || "");
+      const parts = [sido, cols[1], cols[2]].filter(p => p);
+      const entry = parts.join(" ");
+      if(entry) list.push(entry);
+    });
+    return list;
+  }catch(e){
+    console.error("화이트리스트(gviz) 로드 실패, 데모 데이터로 대체합니다.", e);
+    document.getElementById('demoNote').classList.add('show');
+    return demoFallback;
+  }
+}
+
 async function loadTables(){
-  noDeliveryZips = await fetchNoDeliveryZips(CONFIG.NO_ZIP_GID, DEMO_NO_ZIP_LIST);
-  window.noDeliveryZips = noDeliveryZips; // 디버깅용: 콘솔에서 직접 확인 가능
+  const [zips, wl] = await Promise.all([
+    fetchNoDeliveryZips(CONFIG.NO_ZIP_GID, DEMO_NO_ZIP_LIST),
+    fetchWhitelist(CONFIG.WHITELIST_GID, DEMO_WHITELIST),
+  ]);
+  noDeliveryZips = zips;
+  whitelist = wl;
+  window.noDeliveryZips = noDeliveryZips; // 디버깅용
+  window.whitelist = whitelist;           // 디버깅용
   console.log("배송불가 우편번호 개수:", noDeliveryZips.size);
+  console.log("화이트리스트 항목 개수:", whitelist.length);
 }
 
 // 구글시트에서 우편번호 열이 "숫자" 형식이면 앞자리 0이 사라짐 (07547 → 7547)
@@ -350,8 +400,14 @@ function normalizeZip(zip){
   return zip;
 }
 
-// 판정 로직: "배송불가" 예외 목록에 있으면 불가능, 없으면 기본적으로 가능
-function isDeliverable(zip){
+// 판정 로직
+// 1단계(게이트): 화이트리스트(탭3)에 해당 동이 없으면 → 무조건 배송불가
+// 2단계: 화이트리스트에 있으면 → 배송불가 예외 목록(탭2)에 우편번호가 있는지 확인
+function isDeliverable(zip, addr){
+  if(whitelist && whitelist.length && addr){
+    const inWhitelist = whitelist.some(entry => addr.includes(entry));
+    if(!inWhitelist) return false;
+  }
   const normZip = normalizeZip(zip);
   return !noDeliveryZips.has(normZip);
 }
@@ -442,7 +498,7 @@ document.getElementById('checkBtn').addEventListener('click', async () => {
     alert("데이터를 아직 불러오는 중이에요. 잠시 후 다시 눌러주세요.");
     return;
   }
-  const result = isDeliverable(currentZip);
+  const result = isDeliverable(currentZip, currentAddr);
   if(result === null){
     showUnknown();
   }else{
