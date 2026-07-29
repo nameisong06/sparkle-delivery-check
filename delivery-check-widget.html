@@ -432,12 +432,16 @@ function openPostcodeSearch(){
       const addr = data.roadAddress || data.jibunAddress;
       const zip = data.zonecode;
 
+      // 도로명주소엔 행정동/법정동 이름이 아예 없는 경우가 많아서,
+      // 화이트리스트 매칭은 "시도 + 시군구 + 법정동"을 따로 조합해서 사용함 (화면 표시는 그대로 도로명주소)
+      const compAddr = [normalizeSido(data.sido || ""), data.sigungu, data.bname].filter(Boolean).join(" ");
+
       document.getElementById('addrResult').style.display = 'block';
       document.getElementById('addrDisplay').textContent = addr;
       document.getElementById('zipDisplay').textContent = "우편번호 " + zip;
 
       currentZip = zip;
-      currentAddr = addr;
+      currentAddr = compAddr || addr; // 혹시 구성요소가 비어있으면 원래 주소로 대체
       if(tablesLoaded) document.getElementById('checkBtn').disabled = false;
       document.getElementById('resultBox').classList.remove('show');
     }
